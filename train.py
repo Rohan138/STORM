@@ -191,7 +191,8 @@ def joint_train_eval_world_model_agent(
     logger,
 ):
     # create runs dir
-    os.makedirs(f"runs/{args.n}", exist_ok=True)
+    logdir = logger._logdir
+    os.makedirs(logdir + "/ckpt", exist_ok=True)
 
     # build vec env, not useful in the Atari100k setting
     # but when the max_steps is large, you can use parallel envs to speed up
@@ -211,7 +212,9 @@ def joint_train_eval_world_model_agent(
 
     # sample and train and eval
     for total_steps in tqdm(
-        range(logger.step, max_steps // num_envs), initial=logger.step, total=max_steps // num_envs
+        range(logger.step, max_steps // num_envs),
+        initial=logger.step,
+        total=max_steps // num_envs,
     ):
         logger.step = total_steps
         # sample part >>>
@@ -352,9 +355,9 @@ def joint_train_eval_world_model_agent(
                 + colorama.Style.RESET_ALL
             )
             torch.save(
-                world_model.state_dict(), f"runs/{args.n}/world_model_{total_steps}.pth"
+                world_model.state_dict(), logdir + f"ckpt/world_model_{total_steps}.pth"
             )
-            torch.save(agent.state_dict(), f"runs/{args.n}/agent_{total_steps}.pth")
+            torch.save(agent.state_dict(), logdir + f"ckpt/agent_{total_steps}.pth")
 
 
 def build_world_model(conf, action_dim):
@@ -406,9 +409,10 @@ if __name__ == "__main__":
     # set seed
     seed_np_torch(seed=args.seed)
     # tensorboard writer
-    logger = Logger(logdir=f"runs/{args.n}", step=0)
+    logdir = f"runs/{args.n}/{args.seed}/"
+    logger = Logger(logdir=logdir, step=0)
     # copy config file
-    shutil.copy(args.config_path, f"runs/{args.n}/config.yaml")
+    shutil.copy(args.config_path, logdir + "config.yaml")
 
     # distinguish between tasks, other debugging options are removed for simplicity
     if conf.Task == "JointTrainAgent":
@@ -423,24 +427,24 @@ if __name__ == "__main__":
         agent = build_agent(conf, action_dim)
 
         # load world model and agent from checkpoint if present
-        paths = glob.glob(f"runs/{args.n}/world_model_*.pth")
+        paths = glob.glob(logdir + "ckpt/world_model_*.pth")
         if paths:
             steps = [int(path.split("_")[-1].split(".")[0]) for path in paths]
             last_step = max(steps)
+            world_model_path = logdir + f"ckpt/world_model_{last_step}.pth"
+            agent_path = logdir + f"ckpt/agent_{last_step}.pth"
             print(
                 colorama.Fore.MAGENTA
-                + f"loading world model from {args.n}/world_model_{last_step}.pth"
+                + f"loading world model from {world_model_path}"
                 + colorama.Style.RESET_ALL
             )
-            world_model.load_state_dict(
-                torch.load(f"runs/{args.n}/world_model_{last_step}.pth")
-            )
+            world_model.load_state_dict(torch.load(world_model_path))
             print(
                 colorama.Fore.MAGENTA
-                + f"loading agent from {args.n}/agent_{last_step}.pth"
+                + f"loading agent from {agent_path}"
                 + colorama.Style.RESET_ALL
             )
-            agent.load_state_dict(torch.load(f"runs/{args.n}/agent_{last_step}.pth"))
+            agent.load_state_dict(torch.load(agent_path))
             logger.step = last_step
 
         # build replay buffer
