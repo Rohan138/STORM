@@ -193,7 +193,8 @@ def build_world_model(conf, action_dim):
         transformer_max_length=conf.Models.WorldModel.TransformerMaxLength,
         transformer_hidden_dim=conf.Models.WorldModel.TransformerHiddenDim,
         transformer_num_layers=conf.Models.WorldModel.TransformerNumLayers,
-        transformer_num_heads=conf.Models.WorldModel.TransformerNumHeads
+        transformer_num_heads=conf.Models.WorldModel.TransformerNumHeads,
+        use_amp=conf.BasicSettings.UseAmp,
     ).cuda()
 
 
@@ -206,6 +207,7 @@ def build_agent(conf, action_dim):
         gamma=conf.Models.Agent.Gamma,
         lambd=conf.Models.Agent.Lambda,
         entropy_coef=conf.Models.Agent.EntropyCoef,
+        use_amp=conf.BasicSettings.UseAmp,
     ).cuda()
 
 

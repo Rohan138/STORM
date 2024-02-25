@@ -215,13 +215,13 @@ class CategoricalKLDivLossWithFreeBits(nn.Module):
 
 class WorldModel(nn.Module):
     def __init__(self, in_channels, action_dim,
-                 transformer_max_length, transformer_hidden_dim, transformer_num_layers, transformer_num_heads):
+                 transformer_max_length, transformer_hidden_dim, transformer_num_layers, transformer_num_heads, use_amp=False):
         super().__init__()
         self.transformer_hidden_dim = transformer_hidden_dim
         self.final_feature_width = 4
         self.stoch_dim = 32
         self.stoch_flattened_dim = self.stoch_dim*self.stoch_dim
-        self.use_amp = True
+        self.use_amp = use_amp
         self.tensor_dtype = torch.bfloat16 if self.use_amp else torch.float32
         self.imagine_batch_size = -1
         self.imagine_batch_length = -1

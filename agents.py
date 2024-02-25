@@ -35,12 +35,12 @@ def calc_lambda_return(rewards, values, termination, gamma, lam, dtype=torch.flo
 
 
 class ActorCriticAgent(nn.Module):
-    def __init__(self, feat_dim, num_layers, hidden_dim, action_dim, gamma, lambd, entropy_coef) -> None:
+    def __init__(self, feat_dim, num_layers, hidden_dim, action_dim, gamma, lambd, entropy_coef, use_amp) -> None:
         super().__init__()
         self.gamma = gamma
         self.lambd = lambd
         self.entropy_coef = entropy_coef
-        self.use_amp = True
+        self.use_amp = use_amp
         self.tensor_dtype = torch.bfloat16 if self.use_amp else torch.float32
 
         self.symlog_twohot_loss = SymLogTwoHotLoss(255, -20, 20)
