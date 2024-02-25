@@ -52,12 +52,6 @@ def eval_episodes(
     world_model.eval()
     agent.eval()
     vec_env = build_vec_env(env_name, image_size, num_envs=num_envs, seed=seed)
-    print(
-        "Current env: "
-        + colorama.Fore.YELLOW
-        + f"{env_name}"
-        + colorama.Style.RESET_ALL
-    )
     sum_reward = np.zeros(num_envs)
     current_obs, current_info = vec_env.reset()
     context_obs = deque(maxlen=16)
@@ -208,7 +202,7 @@ def joint_train_eval_world_model_agent(
     context_obs = deque(maxlen=16)
     context_action = deque(maxlen=16)
 
-    # sample and train
+    # sample and train and eval
     for total_steps in tqdm(range(max_steps // num_envs)):
         # sample part >>>
         if replay_buffer.ready():
@@ -350,7 +344,7 @@ def joint_train_eval_world_model_agent(
 
 
 def build_world_model(conf, action_dim):
-    return WorldModel(
+    model = WorldModel(
         in_channels=conf.Models.WorldModel.InChannels,
         action_dim=action_dim,
         transformer_max_length=conf.Models.WorldModel.TransformerMaxLength,
@@ -359,10 +353,11 @@ def build_world_model(conf, action_dim):
         transformer_num_heads=conf.Models.WorldModel.TransformerNumHeads,
         use_amp=conf.BasicSettings.UseAmp,
     ).cuda()
+    return torch.compile(model)
 
 
 def build_agent(conf, action_dim):
-    return agents.ActorCriticAgent(
+    agent = agents.ActorCriticAgent(
         feat_dim=32 * 32 + conf.Models.WorldModel.TransformerHiddenDim,
         num_layers=conf.Models.Agent.NumLayers,
         hidden_dim=conf.Models.Agent.HiddenDim,
@@ -372,6 +367,7 @@ def build_agent(conf, action_dim):
         entropy_coef=conf.Models.Agent.EntropyCoef,
         use_amp=conf.BasicSettings.UseAmp,
     ).cuda()
+    return torch.compile(agent)
 
 
 if __name__ == "__main__":

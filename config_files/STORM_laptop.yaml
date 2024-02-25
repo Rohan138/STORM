@@ -21,8 +21,8 @@ JointTrainAgent:
   TrainDynamicsEverySteps: 1
   TrainAgentEverySteps: 1
   UseDemonstration: False
-  SaveEverySteps: 100
-  EvalEverySteps: 100
+  SaveEverySteps: 2500
+  EvalEverySteps: 2500
   EvalNumEnvs: 4
   EvalNumEpisodes: 4
 
