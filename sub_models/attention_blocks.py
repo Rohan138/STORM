@@ -1,21 +1,30 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 from einops import rearrange, repeat
 
 
 def get_subsequent_mask(seq):
-    ''' For masking out the subsequent info. '''
+    """For masking out the subsequent info."""
     batch_size, batch_length = seq.shape[:2]
-    subsequent_mask = (1 - torch.triu(
-        torch.ones((1, batch_length, batch_length), device=seq.device), diagonal=1)).bool()
+    subsequent_mask = (
+        1
+        - torch.triu(
+            torch.ones((1, batch_length, batch_length), device=seq.device), diagonal=1
+        )
+    ).bool()
     return subsequent_mask
 
 
 def get_subsequent_mask_with_batch_length(batch_length, device):
-    ''' For masking out the subsequent info. '''
-    subsequent_mask = (1 - torch.triu(torch.ones((1, batch_length, batch_length), device=device), diagonal=1)).bool()
+    """For masking out the subsequent info."""
+    subsequent_mask = (
+        1
+        - torch.triu(
+            torch.ones((1, batch_length, batch_length), device=device), diagonal=1
+        )
+    ).bool()
     return subsequent_mask
 
 
@@ -26,7 +35,7 @@ def get_vector_mask(batch_length, device):
 
 
 class ScaledDotProductAttention(nn.Module):
-    ''' Scaled Dot-Product Attention '''
+    """Scaled Dot-Product Attention"""
 
     def __init__(self, temperature, attn_dropout=0.1):
         super().__init__()
@@ -46,7 +55,7 @@ class ScaledDotProductAttention(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    ''' Multi-Head Attention module '''
+    """Multi-Head Attention module"""
 
     def __init__(self, n_head, d_model, d_k, d_v, dropout=0.1):
         super().__init__()
@@ -60,7 +69,7 @@ class MultiHeadAttention(nn.Module):
         self.w_vs = nn.Linear(d_model, n_head * d_v, bias=False)
         self.fc = nn.Linear(n_head * d_v, d_model, bias=False)
 
-        self.attention = ScaledDotProductAttention(temperature=d_k ** 0.5)
+        self.attention = ScaledDotProductAttention(temperature=d_k**0.5)
 
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
@@ -81,7 +90,7 @@ class MultiHeadAttention(nn.Module):
         q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
 
         if mask is not None:
-            mask = mask.unsqueeze(1)   # For head axis broadcasting.
+            mask = mask.unsqueeze(1)  # For head axis broadcasting.
 
         q, attn = self.attention(q, k, v, mask=mask)
 
@@ -97,7 +106,7 @@ class MultiHeadAttention(nn.Module):
 
 
 class PositionwiseFeedForward(nn.Module):
-    ''' A two-feed-forward-layer module '''
+    """A two-feed-forward-layer module"""
 
     def __init__(self, d_in, d_hid, dropout=0.1):
         super().__init__()
@@ -107,7 +116,6 @@ class PositionwiseFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-
         residual = x
 
         x = self.w_2(F.relu(self.w_1(x)))
@@ -122,12 +130,19 @@ class PositionwiseFeedForward(nn.Module):
 class AttentionBlock(nn.Module):
     def __init__(self, feat_dim, hidden_dim, num_heads, dropout):
         super().__init__()
-        self.slf_attn = MultiHeadAttention(num_heads, feat_dim, feat_dim//num_heads, feat_dim//num_heads, dropout=dropout)
+        self.slf_attn = MultiHeadAttention(
+            num_heads,
+            feat_dim,
+            feat_dim // num_heads,
+            feat_dim // num_heads,
+            dropout=dropout,
+        )
         self.pos_ffn = PositionwiseFeedForward(feat_dim, hidden_dim, dropout=dropout)
 
     def forward(self, enc_input, slf_attn_mask=None):
         enc_output, enc_slf_attn = self.slf_attn(
-            enc_input, enc_input, enc_input, mask=slf_attn_mask)
+            enc_input, enc_input, enc_input, mask=slf_attn_mask
+        )
         enc_output = self.pos_ffn(enc_output)
         return enc_output, enc_slf_attn
 
@@ -135,7 +150,13 @@ class AttentionBlock(nn.Module):
 class AttentionBlockKVCache(nn.Module):
     def __init__(self, feat_dim, hidden_dim, num_heads, dropout):
         super().__init__()
-        self.slf_attn = MultiHeadAttention(num_heads, feat_dim, feat_dim//num_heads, feat_dim//num_heads, dropout=dropout)
+        self.slf_attn = MultiHeadAttention(
+            num_heads,
+            feat_dim,
+            feat_dim // num_heads,
+            feat_dim // num_heads,
+            dropout=dropout,
+        )
         self.pos_ffn = PositionwiseFeedForward(feat_dim, hidden_dim, dropout=dropout)
 
     def forward(self, q, k, v, slf_attn_mask=None):
@@ -145,11 +166,7 @@ class AttentionBlockKVCache(nn.Module):
 
 
 class PositionalEncoding1D(nn.Module):
-    def __init__(
-        self,
-        max_length: int,
-        embed_dim: int
-    ):
+    def __init__(self, max_length: int, embed_dim: int):
         super().__init__()
         self.max_length = max_length
         self.embed_dim = embed_dim
@@ -160,7 +177,7 @@ class PositionalEncoding1D(nn.Module):
         pos_emb = self.pos_emb(torch.arange(self.max_length, device=feat.device))
         pos_emb = repeat(pos_emb, "L D -> B L D", B=feat.shape[0])
 
-        feat = feat + pos_emb[:, :feat.shape[1], :]
+        feat = feat + pos_emb[:, : feat.shape[1], :]
         return feat
 
     def forward_with_position(self, feat, position):
@@ -168,5 +185,5 @@ class PositionalEncoding1D(nn.Module):
         pos_emb = self.pos_emb(torch.arange(self.max_length, device=feat.device))
         pos_emb = repeat(pos_emb, "L D -> B L D", B=feat.shape[0])
 
-        feat = feat + pos_emb[:, position:position+1, :]
+        feat = feat + pos_emb[:, position : position + 1, :]
         return feat
