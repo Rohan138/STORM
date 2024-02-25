@@ -103,6 +103,9 @@ def load_config(config_path):
     conf.JointTrainAgent.TrainAgentEverySteps = 0
     conf.JointTrainAgent.SaveEverySteps = 0
     conf.JointTrainAgent.UseDemonstration = False
+    conf.JointTrainAgent.EvalEverySteps = 0
+    conf.JointTrainAgent.EvalNumEnvs = 0
+    conf.JointTrainAgent.EvalNumEpisodes = 0
 
     conf.defrost()
     conf.merge_from_file(config_path)

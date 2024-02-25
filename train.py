@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from einops import rearrange
 from tqdm import tqdm
+import time
 
 import agents
 import env_wrapper
@@ -37,6 +38,84 @@ def build_vec_env(env_name, image_size, num_envs, seed):
     env_fns = [lambda_generator(env_name, image_size) for i in range(num_envs)]
     vec_env = gymnasium.vector.AsyncVectorEnv(env_fns=env_fns)
     return vec_env
+
+
+def eval_episodes(
+    num_episode,
+    env_name,
+    num_envs,
+    image_size,
+    world_model: WorldModel,
+    agent: agents.ActorCriticAgent,
+    seed,
+):
+    world_model.eval()
+    agent.eval()
+    vec_env = build_vec_env(env_name, image_size, num_envs=num_envs, seed=seed)
+    print(
+        "Current env: "
+        + colorama.Fore.YELLOW
+        + f"{env_name}"
+        + colorama.Style.RESET_ALL
+    )
+    sum_reward = np.zeros(num_envs)
+    current_obs, current_info = vec_env.reset()
+    context_obs = deque(maxlen=16)
+    context_action = deque(maxlen=16)
+
+    final_rewards = []
+    # for total_steps in tqdm(range(max_steps//num_envs)):
+    while True:
+        # sample part >>>
+        with torch.no_grad():
+            if len(context_action) == 0:
+                action = vec_env.action_space.sample()
+            else:
+                context_latent = world_model.encode_obs(
+                    torch.cat(list(context_obs), dim=1)
+                )
+                model_context_action = np.stack(list(context_action), axis=1)
+                model_context_action = torch.Tensor(model_context_action).cuda()
+                (
+                    prior_flattened_sample,
+                    last_dist_feat,
+                ) = world_model.calc_last_dist_feat(
+                    context_latent, model_context_action
+                )
+                action = agent.sample_as_env_action(
+                    torch.cat([prior_flattened_sample, last_dist_feat], dim=-1),
+                    greedy=False,
+                )
+
+        context_obs.append(
+            rearrange(torch.Tensor(current_obs).cuda(), "B H W C -> B 1 C H W") / 255
+        )
+        context_action.append(action)
+
+        obs, reward, done, truncated, info = vec_env.step(action)
+        # cv2.imshow("current_obs", process_visualize(obs[0]))
+        # cv2.waitKey(10)
+
+        done_flag = np.logical_or(done, truncated)
+        if done_flag.any():
+            for i in range(num_envs):
+                if done_flag[i]:
+                    final_rewards.append(sum_reward[i])
+                    sum_reward[i] = 0
+                    if len(final_rewards) == num_episode:
+                        print(
+                            "Mean reward: "
+                            + colorama.Fore.YELLOW
+                            + f"{np.mean(final_rewards)}"
+                            + colorama.Style.RESET_ALL
+                        )
+                        return np.mean(final_rewards)
+
+        # update current_obs, current_info and sum_reward
+        sum_reward += reward
+        current_obs = obs
+        current_info = info
+        # <<< sample part
 
 
 def train_world_model_step(
@@ -86,7 +165,7 @@ def world_model_imagine_data(
     return latent, action, None, None, reward_hat, termination_hat
 
 
-def joint_train_world_model_agent(
+def joint_train_eval_world_model_agent(
     env_name,
     max_steps,
     num_envs,
@@ -104,11 +183,14 @@ def joint_train_world_model_agent(
     imagine_context_length,
     imagine_batch_length,
     save_every_steps,
+    eval_every_steps,
+    eval_num_envs,
+    eval_num_episodes,
     seed,
     logger,
 ):
-    # create ckpt dir
-    os.makedirs(f"ckpt/{args.n}", exist_ok=True)
+    # create runs dir
+    os.makedirs(f"runs/{args.n}", exist_ok=True)
 
     # build vec env, not useful in the Atari100k setting
     # but when the max_steps is large, you can use parallel envs to speed up
@@ -239,6 +321,23 @@ def joint_train_world_model_agent(
             )
         # <<< train agent part
 
+        # evaluate agent
+        if total_steps % (eval_every_steps // num_envs) == 0:
+            print(
+                colorama.Fore.GREEN
+                + f"Evaluating at total steps {total_steps}"
+                + colorama.Style.RESET_ALL
+            )
+            eval_episodes(
+                num_episode=eval_num_episodes,
+                env_name=env_name,
+                num_envs=eval_num_envs,
+                image_size=image_size,
+                world_model=world_model,
+                agent=agent,
+                seed=seed,
+            )
+
         # save model per episode
         if total_steps % (save_every_steps // num_envs) == 0:
             print(
@@ -246,8 +345,8 @@ def joint_train_world_model_agent(
                 + f"Saving model at total steps {total_steps}"
                 + colorama.Style.RESET_ALL
             )
-            torch.save(world_model.state_dict(), f"ckpt/{args.n}/world_model.pth")
-            torch.save(agent.state_dict(), f"ckpt/{args.n}/agent.pth")
+            torch.save(world_model.state_dict(), f"runs/{args.n}/world_model.pth")
+            torch.save(agent.state_dict(), f"runs/{args.n}/agent.pth")
 
 
 def build_world_model(conf, action_dim):
@@ -289,7 +388,7 @@ if __name__ == "__main__":
     parser.add_argument("-seed", type=int, required=True)
     parser.add_argument("-config_path", type=str, required=True)
     parser.add_argument("-env_name", type=str, required=True)
-    parser.add_argument("-trajectory_path", type=str, required=True)
+    parser.add_argument("-trajectory_path", type=str)
     args = parser.parse_args()
     conf = load_config(args.config_path)
     print(colorama.Fore.RED + str(args) + colorama.Style.RESET_ALL)
@@ -314,21 +413,21 @@ if __name__ == "__main__":
         agent = build_agent(conf, action_dim)
 
         # load world model and agent from checkpoint if present
-        if os.path.exists(f"ckpt/{args.n}/world_model.pth") and os.path.exists(
-            f"ckpt/{args.n}/agent.pth"
+        if os.path.exists(f"runs/{args.n}/world_model.pth") and os.path.exists(
+            f"runs/{args.n}/agent.pth"
         ):
             print(
                 colorama.Fore.MAGENTA
                 + f"loading world model from {args.n}/world_model.pth"
                 + colorama.Style.RESET_ALL
             )
-            world_model.load_state_dict(torch.load(f"ckpt/{args.n}/world_model.pth"))
+            world_model.load_state_dict(torch.load(f"runs/{args.n}/world_model.pth"))
             print(
                 colorama.Fore.MAGENTA
                 + f"loading agent from {args.n}/agent.pth"
                 + colorama.Style.RESET_ALL
             )
-            agent.load_state_dict(torch.load(f"ckpt/{args.n}/agent.pth"))
+            agent.load_state_dict(torch.load(f"runs/{args.n}/agent.pth"))
 
         # build replay buffer
         replay_buffer = ReplayBuffer(
@@ -348,8 +447,8 @@ if __name__ == "__main__":
             )
             replay_buffer.load_trajectory(path=args.trajectory_path)
 
-        # train
-        joint_train_world_model_agent(
+        # train and eval
+        joint_train_eval_world_model_agent(
             env_name=args.env_name,
             num_envs=conf.JointTrainAgent.NumEnvs,
             max_steps=conf.JointTrainAgent.SampleMaxSteps,
@@ -371,6 +470,9 @@ if __name__ == "__main__":
             imagine_context_length=conf.JointTrainAgent.ImagineContextLength,
             imagine_batch_length=conf.JointTrainAgent.ImagineBatchLength,
             save_every_steps=conf.JointTrainAgent.SaveEverySteps,
+            eval_every_steps=conf.JointTrainAgent.EvalEverySteps,
+            eval_num_envs=conf.JointTrainAgent.EvalNumEnvs,
+            eval_num_episodes=conf.JointTrainAgent.EvalNumEpisodes,
             seed=args.seed,
             logger=logger,
         )
