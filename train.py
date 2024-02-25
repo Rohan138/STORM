@@ -211,7 +211,7 @@ def joint_train_eval_world_model_agent(
 
     # sample and train and eval
     for total_steps in tqdm(
-        range(logger.step, max_steps // num_envs), initial=logger.step
+        range(logger.step, max_steps // num_envs), initial=logger.step, total=max_steps // num_envs
     ):
         logger.step = total_steps
         # sample part >>>
