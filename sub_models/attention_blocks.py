@@ -1,7 +1,4 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from einops import repeat
+from tinygrad import Tensor, nn
 
 
 def get_subsequent_mask(seq):
@@ -9,8 +6,8 @@ def get_subsequent_mask(seq):
     batch_size, batch_length = seq.shape[:2]
     subsequent_mask = (
         1
-        - torch.triu(
-            torch.ones((1, batch_length, batch_length), device=seq.device), diagonal=1
+        - Tensor.triu(
+            Tensor.ones((1, batch_length, batch_length), device=seq.device), diagonal=1
         )
     ).bool()
     return subsequent_mask
@@ -20,20 +17,20 @@ def get_subsequent_mask_with_batch_length(batch_length, device):
     """For masking out the subsequent info."""
     subsequent_mask = (
         1
-        - torch.triu(
-            torch.ones((1, batch_length, batch_length), device=device), diagonal=1
+        - Tensor.triu(
+            Tensor.ones((1, batch_length, batch_length), device=device), diagonal=1
         )
     ).bool()
     return subsequent_mask
 
 
 def get_vector_mask(batch_length, device):
-    mask = torch.ones((1, 1, batch_length), device=device).bool()
-    # mask = torch.ones((1, batch_length, 1), device=device).bool()
+    mask = Tensor.ones((1, 1, batch_length), device=device).bool()
+    # mask = Tensor.ones((1, batch_length, 1), device=device).bool()
     return mask
 
 
-class ScaledDotProductAttention(nn.Module):
+class ScaledDotProductAttention():
     """Scaled Dot-Product Attention"""
 
     def __init__(self, temperature, attn_dropout=0.1):
@@ -42,18 +39,18 @@ class ScaledDotProductAttention(nn.Module):
         self.dropout = nn.Dropout(attn_dropout)
 
     def forward(self, q, k, v, mask=None):
-        attn = torch.matmul(q / self.temperature, k.transpose(2, 3))
+        attn = Tensor.matmul(q / self.temperature, k.transpose(2, 3))
 
         if mask is not None:
             attn = attn.masked_fill(mask == 0, -1e9)
 
-        attn = self.dropout(F.softmax(attn, dim=-1))
-        output = torch.matmul(attn, v)
+        attn = self.dropout(Tensor.softmax(attn, dim=-1))
+        output = Tensor.matmul(attn, v)
 
         return output, attn
 
 
-class MultiHeadAttention(nn.Module):
+class MultiHeadAttention():
     """Multi-Head Attention module"""
 
     def __init__(self, n_head, d_model, d_k, d_v, dropout=0.1):
@@ -104,7 +101,7 @@ class MultiHeadAttention(nn.Module):
         return q, attn
 
 
-class PositionwiseFeedForward(nn.Module):
+class PositionwiseFeedForward():
     """A two-feed-forward-layer module"""
 
     def __init__(self, d_in, d_hid, dropout=0.1):
@@ -117,7 +114,7 @@ class PositionwiseFeedForward(nn.Module):
     def forward(self, x):
         residual = x
 
-        x = self.w_2(F.relu(self.w_1(x)))
+        x = self.w_2(Tensor.relu(self.w_1(x)))
         x = self.dropout(x)
         x += residual
 
@@ -126,7 +123,7 @@ class PositionwiseFeedForward(nn.Module):
         return x
 
 
-class AttentionBlock(nn.Module):
+class AttentionBlock():
     def __init__(self, feat_dim, hidden_dim, num_heads, dropout):
         super().__init__()
         self.slf_attn = MultiHeadAttention(
@@ -146,7 +143,7 @@ class AttentionBlock(nn.Module):
         return enc_output, enc_slf_attn
 
 
-class AttentionBlockKVCache(nn.Module):
+class AttentionBlockKVCache():
     def __init__(self, feat_dim, hidden_dim, num_heads, dropout):
         super().__init__()
         self.slf_attn = MultiHeadAttention(
@@ -164,7 +161,7 @@ class AttentionBlockKVCache(nn.Module):
         return output, attn
 
 
-class PositionalEncoding1D(nn.Module):
+class PositionalEncoding1D():
     def __init__(self, max_length: int, embed_dim: int):
         super().__init__()
         self.max_length = max_length
@@ -173,16 +170,16 @@ class PositionalEncoding1D(nn.Module):
         self.pos_emb = nn.Embedding(self.max_length, embed_dim)
 
     def forward(self, feat):
-        pos_emb = self.pos_emb(torch.arange(self.max_length, device=feat.device))
-        pos_emb = repeat(pos_emb, "L D -> B L D", B=feat.shape[0])
+        pos_emb = self.pos_emb(Tensor.arange(self.max_length, device=feat.device))
+        pos_emb = Tensor.repeat(pos_emb, (feat.shape[0], 1, 1))
 
         feat = feat + pos_emb[:, : feat.shape[1], :]
         return feat
 
     def forward_with_position(self, feat, position):
         assert feat.shape[1] == 1
-        pos_emb = self.pos_emb(torch.arange(self.max_length, device=feat.device))
-        pos_emb = repeat(pos_emb, "L D -> B L D", B=feat.shape[0])
+        pos_emb = self.pos_emb(Tensor.arange(self.max_length, device=feat.device))
+        pos_emb = Tensor.repeat(pos_emb, (feat.shape[0], 1, 1))
 
         feat = feat + pos_emb[:, position : position + 1, :]
         return feat
