@@ -1,4 +1,3 @@
-import json
 import os
 import random
 import time
@@ -56,8 +55,6 @@ class Logger:
         if fps:
             scalars.append(("fps", self._compute_fps(step)))
         print(f"[{step}]", " / ".join(f"{k} {v:.1f}" for k, v in scalars))
-        with (self._logdir / "metrics.jsonl").open("a") as f:
-            f.write(json.dumps({"step": step, **dict(scalars)}) + "\n")
         for name, value in scalars:
             if "/" not in name:
                 self._writer.add_scalar("scalars/" + name, value, step)

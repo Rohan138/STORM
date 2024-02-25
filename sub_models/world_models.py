@@ -1,10 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, reduce, repeat
+from einops import rearrange, reduce
 from einops.layers.torch import Rearrange
-from torch.cuda.amp import autocast
-from torch.distributions import Normal, OneHotCategorical
+from torch.distributions import OneHotCategorical
 
 import agents
 from sub_models.attention_blocks import (

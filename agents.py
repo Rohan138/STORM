@@ -3,10 +3,6 @@ import copy
 import torch
 import torch.distributions as distributions
 import torch.nn as nn
-import torch.nn.functional as F
-from einops import rearrange, repeat
-from einops.layers.torch import Rearrange
-from torch.cuda.amp import autocast
 
 from sub_models.functions_losses import SymLogTwoHotLoss
 from utils import EMAScalar

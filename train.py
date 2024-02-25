@@ -213,6 +213,7 @@ def joint_train_eval_world_model_agent(
     for total_steps in tqdm(
         range(logger.step, max_steps // num_envs), initial=logger.step
     ):
+        logger.step = total_steps
         # sample part >>>
         if replay_buffer.ready():
             world_model.eval()
@@ -341,6 +342,7 @@ def joint_train_eval_world_model_agent(
                 seed=seed,
             )
             logger.log(f"eval/{env_name}_mean_reward", mean_rewards)
+            logger.write()
 
         # save model per episode
         if total_steps % (save_every_steps // num_envs) == 0:

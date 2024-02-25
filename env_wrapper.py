@@ -1,10 +1,8 @@
-import copy
 from collections import deque
 
 import cv2
 import gymnasium
 import numpy as np
-from einops import rearrange
 
 
 class LifeLossInfo(gymnasium.Wrapper):

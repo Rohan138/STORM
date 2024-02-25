@@ -7,7 +7,7 @@ BasicSettings:
   UseAmp: False
 
 JointTrainAgent:
-  SampleMaxSteps: 102000
+  SampleMaxSteps: 100000
   BufferMaxLength: 100000
   BufferWarmUp: 1024
   NumEnvs: 1
