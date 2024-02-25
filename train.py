@@ -1,4 +1,5 @@
 import argparse
+import glob
 import os
 import shutil
 from collections import deque
@@ -9,7 +10,6 @@ import numpy as np
 import torch
 from einops import rearrange
 from tqdm import tqdm
-import time
 
 import agents
 import env_wrapper
@@ -41,7 +41,7 @@ def build_vec_env(env_name, image_size, num_envs, seed):
 
 
 def eval_episodes(
-    num_episode,
+    num_episodes,
     env_name,
     num_envs,
     image_size,
@@ -96,14 +96,21 @@ def eval_episodes(
                 if done_flag[i]:
                     final_rewards.append(sum_reward[i])
                     sum_reward[i] = 0
-                    if len(final_rewards) == num_episode:
+                    if len(final_rewards) == num_episodes:
                         print(
                             "Mean reward: "
                             + colorama.Fore.YELLOW
                             + f"{np.mean(final_rewards)}"
                             + colorama.Style.RESET_ALL
                         )
+                        vec_env.close()
                         return np.mean(final_rewards)
+
+        # update context_obs and context_action
+        context_obs.append(
+            rearrange(torch.Tensor(obs).cuda(), "B H W C -> B 1 C H W") / 255
+        )
+        context_action.append(action)
 
         # update current_obs, current_info and sum_reward
         sum_reward += reward
@@ -179,7 +186,7 @@ def joint_train_eval_world_model_agent(
     save_every_steps,
     eval_every_steps,
     eval_num_envs,
-    eval_num_episodes,
+    eval_num_episodess,
     seed,
     logger,
 ):
@@ -203,7 +210,9 @@ def joint_train_eval_world_model_agent(
     context_action = deque(maxlen=16)
 
     # sample and train and eval
-    for total_steps in tqdm(range(max_steps // num_envs)):
+    for total_steps in tqdm(
+        range(logger.step, max_steps // num_envs), initial=logger.step
+    ):
         # sample part >>>
         if replay_buffer.ready():
             world_model.eval()
@@ -322,8 +331,8 @@ def joint_train_eval_world_model_agent(
                 + f"Evaluating at total steps {total_steps}"
                 + colorama.Style.RESET_ALL
             )
-            eval_episodes(
-                num_episode=eval_num_episodes,
+            mean_rewards = eval_episodes(
+                num_episodes=eval_num_episodess,
                 env_name=env_name,
                 num_envs=eval_num_envs,
                 image_size=image_size,
@@ -331,6 +340,7 @@ def joint_train_eval_world_model_agent(
                 agent=agent,
                 seed=seed,
             )
+            logger.log(f"eval/{env_name}_mean_reward", mean_rewards)
 
         # save model per episode
         if total_steps % (save_every_steps // num_envs) == 0:
@@ -339,8 +349,10 @@ def joint_train_eval_world_model_agent(
                 + f"Saving model at total steps {total_steps}"
                 + colorama.Style.RESET_ALL
             )
-            torch.save(world_model.state_dict(), f"runs/{args.n}/world_model.pth")
-            torch.save(agent.state_dict(), f"runs/{args.n}/agent.pth")
+            torch.save(
+                world_model.state_dict(), f"runs/{args.n}/world_model_{total_steps}.pth"
+            )
+            torch.save(agent.state_dict(), f"runs/{args.n}/agent_{total_steps}.pth")
 
 
 def build_world_model(conf, action_dim):
@@ -392,7 +404,7 @@ if __name__ == "__main__":
     # set seed
     seed_np_torch(seed=args.seed)
     # tensorboard writer
-    logger = Logger(path=f"runs/{args.n}")
+    logger = Logger(logdir=f"runs/{args.n}", step=0)
     # copy config file
     shutil.copy(args.config_path, f"runs/{args.n}/config.yaml")
 
@@ -409,21 +421,25 @@ if __name__ == "__main__":
         agent = build_agent(conf, action_dim)
 
         # load world model and agent from checkpoint if present
-        if os.path.exists(f"runs/{args.n}/world_model.pth") and os.path.exists(
-            f"runs/{args.n}/agent.pth"
-        ):
+        paths = glob.glob(f"runs/{args.n}/world_model_*.pth")
+        if paths:
+            steps = [int(path.split("_")[-1].split(".")[0]) for path in paths]
+            last_step = max(steps)
             print(
                 colorama.Fore.MAGENTA
-                + f"loading world model from {args.n}/world_model.pth"
+                + f"loading world model from {args.n}/world_model_{last_step}.pth"
                 + colorama.Style.RESET_ALL
             )
-            world_model.load_state_dict(torch.load(f"runs/{args.n}/world_model.pth"))
+            world_model.load_state_dict(
+                torch.load(f"runs/{args.n}/world_model_{last_step}.pth")
+            )
             print(
                 colorama.Fore.MAGENTA
-                + f"loading agent from {args.n}/agent.pth"
+                + f"loading agent from {args.n}/agent_{last_step}.pth"
                 + colorama.Style.RESET_ALL
             )
-            agent.load_state_dict(torch.load(f"runs/{args.n}/agent.pth"))
+            agent.load_state_dict(torch.load(f"runs/{args.n}/agent_{last_step}.pth"))
+            logger.step = last_step
 
         # build replay buffer
         replay_buffer = ReplayBuffer(
@@ -468,7 +484,7 @@ if __name__ == "__main__":
             save_every_steps=conf.JointTrainAgent.SaveEverySteps,
             eval_every_steps=conf.JointTrainAgent.EvalEverySteps,
             eval_num_envs=conf.JointTrainAgent.EvalNumEnvs,
-            eval_num_episodes=conf.JointTrainAgent.EvalNumEpisodes,
+            eval_num_episodess=conf.JointTrainAgent.EvalNumEpisodes,
             seed=args.seed,
             logger=logger,
         )

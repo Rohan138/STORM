@@ -1,12 +1,10 @@
+import json
 import os
 import random
 import time
-from contextlib import contextmanager
 
 import numpy as np
 import torch
-import yacs
-from einops import repeat
 from tensorboardX import SummaryWriter
 from yacs.config import CfgNode as CN
 
@@ -24,23 +22,72 @@ def seed_np_torch(seed=20001118):
 
 
 class Logger:
-    def __init__(self, path) -> None:
-        self.writer = SummaryWriter(logdir=path, flush_secs=1)
-        self.tag_step = {}
+    def __init__(self, logdir, step) -> None:
+        self._logdir = logdir
+        self._writer = SummaryWriter(log_dir=str(logdir), max_queue=1000)
+        self._last_step = None
+        self._last_time = None
+        self._scalars = {}
+        self._images = {}
+        self._videos = {}
+        self.step = step
 
     def log(self, tag, value):
-        if tag not in self.tag_step:
-            self.tag_step[tag] = 0
-        else:
-            self.tag_step[tag] += 1
         if "video" in tag:
-            self.writer.add_video(tag, value, self.tag_step[tag], fps=15)
+            self.video(tag, value)
         elif "images" in tag:
-            self.writer.add_images(tag, value, self.tag_step[tag])
-        elif "hist" in tag:
-            self.writer.add_histogram(tag, value, self.tag_step[tag])
+            self.image(tag, value)
         else:
-            self.writer.add_scalar(tag, value, self.tag_step[tag])
+            self.scalar(tag, value)
+
+    def scalar(self, name, value):
+        self._scalars[name] = float(value)
+
+    def image(self, name, value):
+        self._images[name] = np.array(value)
+
+    def video(self, name, value):
+        self._videos[name] = np.array(value)
+
+    def write(self, fps=False, step=False):
+        if not step:
+            step = self.step
+        scalars = list(self._scalars.items())
+        if fps:
+            scalars.append(("fps", self._compute_fps(step)))
+        print(f"[{step}]", " / ".join(f"{k} {v:.1f}" for k, v in scalars))
+        with (self._logdir / "metrics.jsonl").open("a") as f:
+            f.write(json.dumps({"step": step, **dict(scalars)}) + "\n")
+        for name, value in scalars:
+            if "/" not in name:
+                self._writer.add_scalar("scalars/" + name, value, step)
+            else:
+                self._writer.add_scalar(name, value, step)
+        for name, value in self._images.items():
+            self._writer.add_image(name, value, step)
+        for name, value in self._videos.items():
+            name = name if isinstance(name, str) else name.decode("utf-8")
+            if np.issubdtype(value.dtype, np.floating):
+                value = np.clip(255 * value, 0, 255).astype(np.uint8)
+            B, T, H, W, C = value.shape
+            value = value.transpose(1, 4, 2, 0, 3).reshape((1, T, C, H, B * W))
+            self._writer.add_video(name, value, step, 16)
+
+        self._writer.flush()
+        self._scalars = {}
+        self._images = {}
+        self._videos = {}
+
+    def _compute_fps(self, step):
+        if self._last_step is None:
+            self._last_time = time.time()
+            self._last_step = step
+            return 0
+        steps = step - self._last_step
+        duration = time.time() - self._last_time
+        self._last_time += duration
+        self._last_step = step
+        return steps / duration
 
 
 class EMAScalar:
