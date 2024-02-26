@@ -167,6 +167,7 @@ def world_model_imagine_data(
 
 
 def joint_train_eval_world_model_agent(
+    n,
     env_name,
     max_steps,
     num_envs,
@@ -190,7 +191,7 @@ def joint_train_eval_world_model_agent(
     seed,
     logger,
 ):
-    ckptdir = f"ckpt/{env_name}/{seed}/"
+    ckptdir = f"ckpt/{n}/{seed}/"
     # build vec env, not useful in the Atari100k setting
     # but when the max_steps is large, you can use parallel envs to speed up
     vec_env = build_vec_env(env_name, image_size, num_envs=num_envs, seed=seed)
@@ -467,6 +468,7 @@ if __name__ == "__main__":
 
         # train and eval
         joint_train_eval_world_model_agent(
+            n=args.n,
             env_name=args.env_name,
             num_envs=conf.JointTrainAgent.NumEnvs,
             max_steps=conf.JointTrainAgent.SampleMaxSteps,
