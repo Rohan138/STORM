@@ -106,12 +106,6 @@ def eval_episodes(
                         vec_env.close()
                         return np.mean(final_rewards)
 
-        # update context_obs and context_action
-        context_obs.append(
-            rearrange(torch.Tensor(obs).cuda(), "B H W C -> B 1 C H W") / 255
-        )
-        context_action.append(action)
-
         # update current_obs, current_info and sum_reward
         sum_reward += reward
         current_obs = obs
