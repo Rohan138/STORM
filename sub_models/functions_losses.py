@@ -1,5 +1,6 @@
 from tinygrad import Tensor
 
+def linspace(start, end, steps): return Tensor.full(steps, start, requires_grad=False) + Tensor.arange(steps, requires_grad=False) * ((end-start) / (steps-1))
 
 def symlog(x):
     Tensor.no_grad = True
@@ -7,6 +8,8 @@ def symlog(x):
     Tensor.no_grad = False
     return loss
 
+def digitize(x: Tensor, bins: Tensor):
+    return (x.unsqueeze(-1) - bins).relu().argmin(-1).contiguous().realize()
 
 def symexp(x):
     Tensor.no_grad = True
@@ -25,51 +28,43 @@ class SymLogLoss:
         return 0.5 * mse_loss(output, target)
 
 
-class SymLogTwoHotLoss(nn.Module):
+class SymLogTwoHotLoss():
     def __init__(self, num_classes, lower_bound, upper_bound):
-        super().__init__()
         self.num_classes = num_classes
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.bin_length = (upper_bound - lower_bound) / (num_classes - 1)
 
-        # use register buffer so that bins move with .cuda() automatically
-        self.bins: Tensor.Tensor
-        self.register_buffer(
-            "bins", Tensor.linspace(-20, 20, num_classes), persistent=False
-        )
+        self.bins = linspace(lower_bound, upper_bound, num_classes)
 
-    def forward(self, output, target):
+    def __call__(self, output, target):
         target = symlog(target)
         assert target.min() >= self.lower_bound and target.max() <= self.upper_bound
 
-        index = Tensor.bucketize(target, self.bins)
+        index = digitize(target, self.bins)
         diff = target - self.bins[index - 1]  # -1 to get the lower bound
         weight = diff / self.bin_length
-        weight = Tensor.clamp(weight, 0, 1)
+        weight = Tensor.clip(weight, 0, 1)
         weight = weight.unsqueeze(-1)
 
-        target_prob = (1 - weight) * F.one_hot(
+        target_prob = (1 - weight) * Tensor.one_hot(
             index - 1, self.num_classes
-        ) + weight * F.one_hot(index, self.num_classes)
+        ) + weight * Tensor.one_hot(index, self.num_classes)
 
-        loss = -target_prob * F.log_softmax(output, dim=-1)
-        loss = loss.sum(dim=-1)
+        loss = -target_prob * Tensor.log_softmax(output, axis=-1)
+        loss = loss.sum(axis=-1)
         return loss.mean()
 
     def decode(self, output):
-        return symexp(F.softmax(output, dim=-1) @ self.bins)
+        return symexp(Tensor.softmax(output, dim=-1) @ self.bins)
 
 
 if __name__ == "__main__":
     loss_func = SymLogTwoHotLoss(255, -20, 20)
-    output = Tensor.randn(1, 1, 255).requires_grad_()
-    target = Tensor.ones(1).reshape(1, 1).float() * 0.1
-    print(target)
+    B = 2
+    T = 4
+    output = Tensor.randn(B, T, 255)
+    target = Tensor.randint(B, T, low = -15, high = 15).float()
+    print(target.numpy())
     loss = loss_func(output, target)
-    print(loss)
-
-    # prob = Tensor.ones(1, 1, 255)*0.5/255
-    # prob[0, 0, 128] = 0.5
-    # logits = Tensor.log(prob)
-    # print(loss_func.decode(logits), loss_func.bins[128])
+    print(loss.numpy())
