@@ -29,7 +29,7 @@ JointTrainAgent:
 Models:
   WorldModel:
     InChannels: 3
-    TransformerMaxLength: 64
+    TransformerMaxLength: 16
     TransformerHiddenDim: 256
     TransformerNumLayers: 2
     TransformerNumHeads: 8
