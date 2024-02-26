@@ -89,9 +89,7 @@ class MultiHeadAttention:
             )
             self.cache_k.assign(new_k)
             new_v = (
-                values.pad(
-                    (None, (0, self.kv_length - start_pos - seqlen), None, None)
-                )
+                values.pad((None, (0, self.kv_length - start_pos - seqlen), None, None))
                 .contiguous()
                 .realize()
             )
@@ -169,8 +167,11 @@ class PositionalEncoding1D:
         self.pos_emb = nn.Embedding(self.max_length, embed_dim)
 
     def __call__(self, feat, position=None):
-        pos_emb = self.pos_emb(Tensor.arange(self.max_length, device=feat.device))
-        pos_emb = Tensor.repeat(pos_emb, (feat.shape[0], 1, 1))
+        pos_emb = self.pos_emb(
+            Tensor.arange(self.max_length, device=feat.device).repeat(
+                (feat.shape[0], 1)
+            )
+        )
 
         if position is not None:
             assert feat.shape[1] == 1

@@ -5,7 +5,6 @@ from tinygrad import Tensor
 
 
 class TestMask(unittest.TestCase):
-
     def test_subsequent_mask(self):
         seq = Tensor.ones((1, 10, 10))
         attn = attention_blocks.get_subsequent_mask(seq)
@@ -22,7 +21,7 @@ class TestMultiHeadAttention(unittest.TestCase):
         x = Tensor.randint((1, 1, 32))
         y = model(x)
         self.assertEqual(y.numpy().shape, (1, 1, 32))
-    
+
     def test_multi_head_attention_kv_cache(self):
         model = attention_blocks.MultiHeadAttention(8, 32, 32, 8, 128)
         x = Tensor.randint((1, 1, 32))
@@ -31,6 +30,7 @@ class TestMultiHeadAttention(unittest.TestCase):
         x = Tensor.randint((1, 1, 32))
         y = model(x, 1, cache_kv=True)
         self.assertEqual(y.numpy().shape, (1, 1, 32))
+
 
 class TestAttentionBlockKVCache(unittest.TestCase):
     def test_attention_block(self):
