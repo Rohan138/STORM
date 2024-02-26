@@ -63,7 +63,6 @@ class StochasticTransformerKVCache:
 
     def forward_with_kv_cache(self, samples, action):
         assert samples.shape[1] == 1
-        mask = get_vector_mask(self.kv_len + 1, samples.device)
 
         action = Tensor.one_hot(action.cast(dtypes.int), self.action_dim).float()
         feats = Tensor.cat([samples, action], dim=-1).sequential(self.stem)
@@ -71,7 +70,7 @@ class StochasticTransformerKVCache:
         feats = self.layer_norm(feats)
 
         for layer in self.layer_stack:
-            feats = layer(feats, self.kv_len, True, mask)
+            feats = layer(feats, self.kv_len, True)
 
         self.kv_len = Variable("kv_len", self.kv_len.val + 1, self.max_length)
 

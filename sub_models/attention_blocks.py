@@ -22,15 +22,10 @@ def get_subsequent_mask_with_batch_length(batch_length, device=None):
     return subsequent_mask
 
 
-def get_vector_mask(batch_length, device=None):
-    mask = Tensor.ones((1, 1, batch_length), device=device).cast(dtypes.bool)
-    return mask
-
-
 class MultiHeadAttention:
     """Multi-Head Attention module with KV cache"""
 
-    def __init__(self, n_head, d_model, d_k, d_v, max_length, dropout=0.1):
+    def __init__(self, n_head, d_model, d_k, d_v, kv_length, dropout=0.1):
         self.n_head = n_head
         self.d_k = d_k
         self.d_v = d_v
@@ -42,7 +37,7 @@ class MultiHeadAttention:
 
         self.dropout = dropout
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
-        self.max_length = max_length
+        self.kv_length = kv_length
         self.cache_k = None
         self.cache_v = None
 
@@ -67,12 +62,12 @@ class MultiHeadAttention:
             # create kv cache
             if self.cache_k is None:
                 self.cache_k = Tensor.zeros(
-                    sz_b, self.max_length, self.n_head, self.d_k, dtype=x.dtype
+                    sz_b, self.kv_length, self.n_head, self.d_k, dtype=x.dtype
                 )
 
             if self.cache_v is None:
                 self.cache_v = Tensor.zeros(
-                    sz_b, self.max_length, self.n_head, self.d_v, dtype=x.dtype
+                    sz_b, self.kv_length, self.n_head, self.d_v, dtype=x.dtype
                 )
 
             keys = (
@@ -88,14 +83,14 @@ class MultiHeadAttention:
 
             # update the kv cache
             new_k = (
-                keys.pad((None, (0, self.max_length - start_pos - seqlen), None, None))
+                keys.pad((None, (0, self.kv_length - start_pos - seqlen), None, None))
                 .contiguous()
                 .realize()
             )
             self.cache_k.assign(new_k)
             new_v = (
                 values.pad(
-                    (None, (0, self.max_length - start_pos - seqlen), None, None)
+                    (None, (0, self.kv_length - start_pos - seqlen), None, None)
                 )
                 .contiguous()
                 .realize()
@@ -149,21 +144,21 @@ class PositionwiseFeedForward:
 
 
 class AttentionBlockKVCache:
-    def __init__(self, feat_dim, hidden_dim, num_heads, max_length, dropout):
+    def __init__(self, feat_dim, hidden_dim, num_heads, kv_length, dropout):
         self.slf_attn = MultiHeadAttention(
             num_heads,
             feat_dim,
             feat_dim // num_heads,
             feat_dim // num_heads,
-            max_length,
+            kv_length,
             dropout=dropout,
         )
         self.pos_ffn = PositionwiseFeedForward(feat_dim, hidden_dim, dropout=dropout)
 
-    def __call__(self, x, start_pos, cache_kv=False, slf_attn_mask=None):
-        output, attn = self.slf_attn(x, start_pos, cache_kv, slf_attn_mask)
+    def __call__(self, x, start_pos=0, cache_kv=False, slf_attn_mask=None):
+        output = self.slf_attn(x, start_pos, cache_kv, slf_attn_mask)
         output = self.pos_ffn(output)
-        return output, attn
+        return output
 
 
 class PositionalEncoding1D:
