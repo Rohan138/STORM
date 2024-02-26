@@ -190,10 +190,7 @@ def joint_train_eval_world_model_agent(
     seed,
     logger,
 ):
-    # create runs dir
-    logdir = logger._logdir
-    os.makedirs(logdir + "/ckpt", exist_ok=True)
-
+    ckptdir = f"ckpt/{env_name}/{seed}/"
     # build vec env, not useful in the Atari100k setting
     # but when the max_steps is large, you can use parallel envs to speed up
     vec_env = build_vec_env(env_name, image_size, num_envs=num_envs, seed=seed)
@@ -355,9 +352,9 @@ def joint_train_eval_world_model_agent(
                 + colorama.Style.RESET_ALL
             )
             torch.save(
-                world_model.state_dict(), logdir + f"ckpt/world_model_{total_steps}.pth"
+                world_model.state_dict(), ckptdir + f"world_model_{total_steps}.pth"
             )
-            torch.save(agent.state_dict(), logdir + f"ckpt/agent_{total_steps}.pth")
+            torch.save(agent.state_dict(), ckptdir + f"agent_{total_steps}.pth")
 
 
 def build_world_model(conf, action_dim):
@@ -410,6 +407,9 @@ if __name__ == "__main__":
     seed_np_torch(seed=args.seed)
     # tensorboard writer
     logdir = f"runs/{args.n}/{args.seed}/"
+    os.makedirs(logdir, exist_ok=True)
+    ckptdir = f"ckpt/{args.n}/{args.seed}/"
+    os.makedirs(ckptdir, exist_ok=True)
     logger = Logger(logdir=logdir, step=0)
     # copy config file
     shutil.copy(args.config_path, logdir + "config.yaml")
@@ -427,12 +427,12 @@ if __name__ == "__main__":
         agent = build_agent(conf, action_dim)
 
         # load world model and agent from checkpoint if present
-        paths = glob.glob(logdir + "ckpt/world_model_*.pth")
+        paths = glob.glob(ckptdir + "world_model_*.pth")
         if paths:
             steps = [int(path.split("_")[-1].split(".")[0]) for path in paths]
             last_step = max(steps)
-            world_model_path = logdir + f"ckpt/world_model_{last_step}.pth"
-            agent_path = logdir + f"ckpt/agent_{last_step}.pth"
+            world_model_path = ckptdir + f"world_model_{last_step}.pth"
+            agent_path = ckptdir + f"agent_{last_step}.pth"
             print(
                 colorama.Fore.MAGENTA
                 + f"loading world model from {world_model_path}"
